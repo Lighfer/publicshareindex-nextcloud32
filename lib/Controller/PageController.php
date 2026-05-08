@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\PublicShareIndex\Controller;
 
 use OCA\PublicShareIndex\AppInfo\Application;
+use OCA\PublicShareIndex\Http\StreamingFileResponse;
 use OCA\PublicShareIndex\Service\PublicShareIndexService;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http;
@@ -13,6 +14,7 @@ use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\Attribute\PublicPage;
 use OCP\AppFramework\Http\DataResponse;
+use OCP\AppFramework\Http\Response;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IConfig;
 use OCP\IRequest;
@@ -23,16 +25,19 @@ use Psr\Log\LoggerInterface;
 /**
  * 公开共享浏览器的 HTTP 入口。
  *
- * 设计变更（v0.4 起）：
- *   - 不再提供文件流式接口 / 内联预览，所有"打开 / 预览 / 下载 / 子目录浏览"
- *     全部跳转回 Nextcloud 原生公开分享页面（/index.php/s/<token>）。
- *   - 本应用仅承担"集中索引 + 全局搜索"职责。
+ * 端点说明（v0.5）：
+ *   GET /                页面入口，渲染模板
+ *   GET /api/bootstrap   顶层目录树（共享人 → 共享根）
+ *   GET /api/children    列出共享根下指定相对路径的"一层"子节点
+ *   GET /api/search      全局搜索文件名 / 路径
+ *   GET /api/list-all    递归把单个 share 内的全部内容平铺成列表（"显示所有文件"开关）
+ *   GET /api/download    流式下载共享内的具体文件（受 hideDownload / download_enabled 限制）
  *
- * 端点说明：
- *   GET /              页面入口，渲染模板
- *   GET /api/bootstrap 顶层目录树（共享人 → 共享根）
- *   GET /api/children  列出共享根下指定相对路径的子节点（保留作为内部能力，便于未来扩展）
- *   GET /api/search    全局搜索文件名 / 路径
+ * 设计原则：
+ *   - 所有匿名 API 都加 AnonRateLimit 限流，避免被脚本扫描 / DOS。
+ *   - 下载走 StreamingFileResponse，永远以 attachment 头送出，杜绝内联脚本执行风险。
+ *   - 任何"按 shareId + relativePath"调用都让 Service / PathGuard 做范围校验，
+ *     Controller 只负责协议层。
  */
 class PageController extends Controller {
     public function __construct(
@@ -61,19 +66,27 @@ class PageController extends Controller {
             'bootstrapUrl' => $this->urlGenerator->linkToRouteAbsolute(Application::APP_ID . '.page.bootstrap'),
             'childrenUrl' => $this->urlGenerator->linkToRouteAbsolute(Application::APP_ID . '.page.children'),
             'searchUrl' => $this->urlGenerator->linkToRouteAbsolute(Application::APP_ID . '.page.search'),
+            'listAllUrl' => $this->urlGenerator->linkToRouteAbsolute(Application::APP_ID . '.page.listAll'),
+            'downloadUrl' => $this->urlGenerator->linkToRouteAbsolute(Application::APP_ID . '.page.download'),
+            'downloadEnabled' => $this->isDownloadEnabled() ? 'yes' : 'no',
         ], 'guest');
     }
 
+    /**
+     * 取顶层共享索引。默认走 TTL 缓存；?force=1 强制重新扫描并写回。
+     * 缓存命中时响应里会带 fromCache=true，前端用来显示「来自缓存」徽标。
+     */
     #[PublicPage]
     #[NoAdminRequired]
     #[NoCSRFRequired]
     #[AnonRateLimit(limit: 30, period: 60)]
-    public function bootstrap(): DataResponse {
+    public function bootstrap(string $force = ''): DataResponse {
         if (!$this->isPublicPageEnabled()) {
             return new DataResponse(['error' => '公开共享浏览器已被管理员禁用'], Http::STATUS_NOT_FOUND);
         }
         try {
-            return new DataResponse($this->indexService->getBootstrapIndex());
+            $forceRefresh = in_array(strtolower($force), ['1', 'true', 'yes', 'on'], true);
+            return new DataResponse($this->indexService->getBootstrapIndex($forceRefresh));
         } catch (\Throwable $e) {
             $this->logger->warning('加载公开共享索引失败：' . $e->getMessage(), [
                 'app' => Application::APP_ID,
@@ -122,9 +135,90 @@ class PageController extends Controller {
         }
     }
 
+    /**
+     * 「显示所有文件」开关下使用：把单个 share 的全部内容（受上限保护）一次性返回给前端。
+     */
+    #[PublicPage]
+    #[NoAdminRequired]
+    #[NoCSRFRequired]
+    #[AnonRateLimit(limit: 30, period: 60)]
+    public function listAll(string $shareId = '', string $path = ''): DataResponse {
+        if (!$this->isPublicPageEnabled()) {
+            return new DataResponse(['error' => '公开共享浏览器已被管理员禁用'], Http::STATUS_NOT_FOUND);
+        }
+        try {
+            return new DataResponse($this->indexService->listAll($shareId, $path));
+        } catch (\Throwable $e) {
+            $this->logger->info('listAll 失败：' . $e->getMessage(), [
+                'app' => Application::APP_ID,
+                'shareId' => $shareId,
+                'path' => $path,
+            ]);
+            return new DataResponse(['error' => $this->safeErrorMessage($e, '加载完整列表时出错')], Http::STATUS_BAD_REQUEST);
+        }
+    }
+
+    /**
+     * 流式下载共享内的具体文件。
+     *
+     * 关键安全约束：
+     *   - 必须由 Service 完整校验 share 可见性、hideDownload、download_enabled、路径越界、必须为文件
+     *   - 全程 chunked 输出，避免 OOM
+     *   - 永远以 attachment 头送出，永远 application/octet-stream（不让浏览器内联展示）
+     *   - 关闭浏览器 / 代理缓存
+     */
+    #[PublicPage]
+    #[NoAdminRequired]
+    #[NoCSRFRequired]
+    #[AnonRateLimit(limit: 60, period: 60)]
+    public function download(string $shareId = '', string $path = ''): Response {
+        if (!$this->isPublicPageEnabled()) {
+            return new DataResponse(['error' => '公开共享浏览器已被管理员禁用'], Http::STATUS_NOT_FOUND);
+        }
+        if (!$this->isDownloadEnabled()) {
+            return new DataResponse(['error' => '管理员已禁用本应用的下载功能'], Http::STATUS_FORBIDDEN);
+        }
+        try {
+            $download = $this->indexService->prepareDownload($shareId, $path);
+        } catch (\Throwable $e) {
+            $this->logger->info('准备下载失败：' . $e->getMessage(), [
+                'app' => Application::APP_ID,
+                'shareId' => $shareId,
+                'path' => $path,
+            ]);
+            return new DataResponse(['error' => $this->safeErrorMessage($e, '下载时出错')], Http::STATUS_BAD_REQUEST);
+        }
+
+        return new StreamingFileResponse(
+            $download['resource'],
+            (string)$download['name'],
+            $download['size'],
+            // 强制 application/octet-stream：杜绝浏览器内联展示 HTML / SVG / PDF 等带脚本风险的格式
+            'application/octet-stream',
+            $this->getDownloadChunkBytes(),
+        );
+    }
+
     private function isPublicPageEnabled(): bool {
         $value = strtolower((string)$this->config->getAppValue(Application::APP_ID, 'public_enabled', 'yes'));
         return in_array($value, ['1', 'true', 'yes', 'on'], true);
+    }
+
+    private function isDownloadEnabled(): bool {
+        $value = strtolower((string)$this->config->getAppValue(Application::APP_ID, 'download_enabled', 'yes'));
+        return in_array($value, ['1', 'true', 'yes', 'on'], true);
+    }
+
+    private function getDownloadChunkBytes(): int {
+        $value = (int)$this->config->getAppValue(Application::APP_ID, 'download_chunk_bytes', '8192');
+        // 范围限制：最小 1KB，最大 1MB，避免极端值
+        if ($value < 1024) {
+            return 8192;
+        }
+        if ($value > 1048576) {
+            return 1048576;
+        }
+        return $value;
     }
 
     /**

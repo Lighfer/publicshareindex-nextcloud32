@@ -2,11 +2,11 @@
  * 公开共享浏览器样式（v0.4）。
  *
  * 设计目标：
- *   1. 根元素以 fixed 全屏覆盖整个视口，遮挡 Nextcloud guest 布局自带的 logo / footer。
+ *   1. 根元素以 fixed 全屏覆盖整个视口，遮挡 NextCloud guest 布局自带的 logo / footer。
  *   2. 两栏布局（侧栏 + 主区），主区直接铺满，无中间卡片包裹。
  *   3. 极致克制的扁平浅色风：白底 + 一根细线分隔，目录树彻底去除背景色，
  *      仅用左侧 2px accent 竖线 + 文字色变化指示选中。
- *   4. 不再做任何文件预览 / 下载，所有跳转走 Nextcloud 原生页面。
+ *   4. 文件预览统一跳转 NextCloud 原生公开分享页面；本应用仅提供索引、搜索、按层浏览与单文件下载。
  */
 
 :root {
@@ -55,7 +55,7 @@
 
 /*
  * 防御性 reset：
- *   Nextcloud guest 布局会对原生 <button>、<input> 注入大量默认样式（min-height、border、
+ *   NextCloud guest 布局会对原生 <button>、<input> 注入大量默认样式（min-height、border、
  *   background、padding 等），即使我们后续覆盖也容易出现意料外效果。
  *   因此本应用刻意避开 <button>，统一使用 <div role="button" tabindex="0"> 或 <span role="button">；
  *   这里再做一层显式 reset，作为最后的保险。
@@ -144,6 +144,85 @@
 .psi-search-box input:focus {
     border-color: var(--psi-accent);
     box-shadow: 0 0 0 3px var(--psi-accent-soft);
+}
+
+/*
+ * 「显示所有文件」开关。
+ *
+ * NextCloud guest 布局会给 input[type="checkbox"] 注入大量样式（width/height/min-height
+ * /padding/border/background-image），即使加 appearance: none 也未必能盖掉。
+ * 因此本组件**完全隐藏原生 input**（不渲染），用 .psi-toggle-box 这个 <span> 自行绘制。
+ * 点击 <label> 时浏览器原生触发 input 的 checked 切换，CSS 通过相邻兄弟选择器同步状态。
+ */
+.psi-toggle {
+    margin-top: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--psi-text-soft);
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    position: relative;
+}
+.psi-toggle-input {
+    /* 视觉上彻底消失，但保留可聚焦能力（键盘 Tab 仍能定位） */
+    position: absolute !important;
+    opacity: 0 !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    pointer-events: none;
+}
+.psi-toggle-box {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--psi-border-strong);
+    border-radius: 3px;
+    background: var(--psi-surface);
+    flex: 0 0 auto;
+    position: relative;
+    transition: background-color .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+.psi-toggle:hover .psi-toggle-box { border-color: var(--psi-accent); }
+.psi-toggle-input:focus-visible + .psi-toggle-box {
+    border-color: var(--psi-accent);
+    box-shadow: 0 0 0 3px var(--psi-accent-soft);
+}
+.psi-toggle-input:checked + .psi-toggle-box {
+    background: var(--psi-accent);
+    border-color: var(--psi-accent);
+}
+.psi-toggle-input:checked + .psi-toggle-box::after {
+    content: '';
+    position: absolute;
+    left: 3.5px;
+    top: 0.5px;
+    width: 4px;
+    height: 8px;
+    border: solid #fff;
+    border-width: 0 1.8px 1.8px 0;
+    transform: rotate(45deg);
+}
+.psi-toggle-text { line-height: 1.2; }
+.psi-toggle-hint {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--psi-hover);
+    color: var(--psi-text-mute);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 14px;
+    text-align: center;
+    display: inline-block;
+    cursor: help;
 }
 
 .psi-sidebar-section {
@@ -242,16 +321,38 @@
 }
 .psi-tree-caret.expanded { transform: rotate(90deg); }
 .psi-tree-caret-empty { width: 10px; height: 10px; display: inline-block; }
+
+/*
+ * 节点前的小图标：文件夹 / 用户 / 文件三类。
+ * 颜色与节点 label 同体系；激活时与 accent 同步以呼应选中态。
+ */
+.psi-tree-icon {
+    width: 14px; height: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex: 0 0 auto;
+    color: var(--psi-text-mute);
+}
+.psi-tree-icon-owner { color: var(--psi-text-soft); }
+.psi-tree-icon-folder { color: var(--psi-accent); opacity: .85; }
+.psi-tree-node-root > .psi-tree-item .psi-tree-icon-folder { opacity: 1; }
+.psi-tree-item.active .psi-tree-icon { color: var(--psi-accent); opacity: 1; }
+
 .psi-tree-label {
     flex: 1; min-width: 0;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .psi-sidebar-footer {
-    padding: 12px 20px 16px;
+    padding: 10px 20px 14px;
     border-top: 1px solid var(--psi-border);
-    color: var(--psi-text-mute);
+    color: var(--psi-text-soft);
     font-size: 12px;
+    line-height: 1.5;
+}
+.psi-sidebar-stats { display: block; }
+.psi-sidebar-stats-meta {
+    color: var(--psi-text-mute);
+    font-size: 11px;
 }
 
 /* ---------------- 主区 ---------------- */
@@ -328,6 +429,33 @@
 .psi-btn-action { height: 28px; padding: 0 10px; font-size: 12px; }
 a.psi-btn { text-decoration: none; }
 a.psi-btn:hover { text-decoration: none; }
+
+/* 操作列里多个按钮并排，不换行——按钮文本本身 white-space: nowrap 已经够了，
+   再让 group 容器 nowrap 防止小屏宽度下被强行折行。 */
+.psi-action-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+}
+.psi-col-actions {
+    /* 给操作列预留足够宽度，避免下载 + "在 NextCloud 中打开" 两个按钮被挤压 */
+    white-space: nowrap;
+    min-width: 220px;
+}
+
+/* 下载按钮：用次要颜色，与「在 NextCloud 中打开」做视觉区分 */
+.psi-btn-download {
+    color: var(--psi-accent);
+    border-color: var(--psi-border-strong);
+    background: var(--psi-surface);
+}
+.psi-btn-download:hover {
+    background: var(--psi-accent-soft);
+    border-color: var(--psi-accent);
+    color: var(--psi-accent);
+}
 
 .psi-content {
     flex: 1;

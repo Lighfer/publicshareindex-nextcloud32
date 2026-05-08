@@ -8,6 +8,9 @@
     data-bootstrap-url="<?php p($_['bootstrapUrl']); ?>"
     data-children-url="<?php p($_['childrenUrl']); ?>"
     data-search-url="<?php p($_['searchUrl']); ?>"
+    data-list-all-url="<?php p($_['listAllUrl']); ?>"
+    data-download-url="<?php p($_['downloadUrl']); ?>"
+    data-download-enabled="<?php p($_['downloadEnabled']); ?>"
 >
     <noscript>
         <div class="psi-noscript">
@@ -26,6 +29,12 @@
                 <svg class="psi-search-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
                 <input id="psi-search-input" type="search" autocomplete="off" placeholder="搜索全部公开文件 / 目录" />
             </div>
+            <label class="psi-toggle" for="psi-show-all">
+                <input id="psi-show-all" type="checkbox" class="psi-toggle-input" />
+                <span class="psi-toggle-box" aria-hidden="true"></span>
+                <span class="psi-toggle-text">显示所有文件</span>
+                <span class="psi-toggle-hint" title="开启后可在本应用内进入共享内部、按层浏览目录与文件（每次只显示当前层的直接子项）。文件可直接下载或跳转 NextCloud 原生公开分享页面；不做内联预览。">?</span>
+            </label>
         </div>
 
         <div class="psi-sidebar-section">
@@ -42,7 +51,7 @@
         <header class="psi-topbar">
             <div class="psi-breadcrumbs" id="psi-breadcrumbs" aria-label="路径"></div>
             <div class="psi-topbar-actions">
-                <div id="psi-refresh" class="psi-btn" role="button" tabindex="0" title="重新加载共享索引">刷新</div>
+                <div id="psi-refresh" class="psi-btn" role="button" tabindex="0" title="强制重新扫描所有公开共享，绕过 60 秒服务端缓存">强制刷新</div>
             </div>
         </header>
 
@@ -50,7 +59,7 @@
             <div class="psi-panel-header">
                 <div class="psi-panel-title">
                     <h2 id="psi-current-title">公开共享</h2>
-                    <p id="psi-current-subtitle">从左侧目录树进入任意共享人，或使用顶部搜索框搜索全部公开文件 / 目录。所有"打开"操作都会跳转到 Nextcloud 原生公开分享页面。</p>
+                    <p id="psi-current-subtitle">从左侧目录树进入任意共享人，或使用顶部搜索框搜索全部公开文件 / 目录。所有"打开"操作都会跳转到 NextCloud 原生公开分享页面。</p>
                 </div>
                 <div class="psi-status" id="psi-status" role="status" aria-live="polite">准备就绪</div>
             </div>

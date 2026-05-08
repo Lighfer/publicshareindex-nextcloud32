@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+    <id>publicshareindex</id>
+    <name>Public Share Index</name>
+    <summary>公开共享资源浏览器：集中展示所有公开链接共享内容</summary>
+    <description>
+        在一个全屏、扁平、操作友好的匿名页面里集中展示当前 Nextcloud 实例上所有活跃的公开链接共享。
+        以共享人显示名作为顶级目录，避免同路径冲突；使用真实目录树结构展示，而非平铺路径。
+        支持顶层索引浏览与全局搜索（覆盖共享根内的全部文件 / 目录）。
+        所有"打开 / 预览 / 下载 / 子目录浏览"操作一律跳转回 Nextcloud 原生公开分享页面，
+        本应用仅承担集中索引与搜索职责。
+    </description>
+    <version>0.4.2</version>
+    <licence>agpl</licence>
+    <author mail="admin@example.local">Local Admin</author>
+    <namespace>PublicShareIndex</namespace>
+    <category>files</category>
+    <bugs>https://github.com/local/publicshareindex/issues</bugs>
+    <dependencies>
+        <nextcloud min-version="32" max-version="32" />
+    </dependencies>
+</info>

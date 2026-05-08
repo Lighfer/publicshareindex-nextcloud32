@@ -1,0 +1,538 @@
+/*
+ * 公开共享浏览器样式（v0.4）。
+ *
+ * 设计目标：
+ *   1. 根元素以 fixed 全屏覆盖整个视口，遮挡 Nextcloud guest 布局自带的 logo / footer。
+ *   2. 两栏布局（侧栏 + 主区），主区直接铺满，无中间卡片包裹。
+ *   3. 极致克制的扁平浅色风：白底 + 一根细线分隔，目录树彻底去除背景色，
+ *      仅用左侧 2px accent 竖线 + 文字色变化指示选中。
+ *   4. 不再做任何文件预览 / 下载，所有跳转走 Nextcloud 原生页面。
+ */
+
+:root {
+    --psi-bg: #ffffff;
+    --psi-bg-soft: #fafafb;
+    --psi-surface: #ffffff;
+    --psi-hover: #f3f4f6;
+    --psi-border: #ececef;
+    --psi-border-strong: #d4d4d8;
+    --psi-text: #18181b;
+    --psi-text-soft: #52525b;
+    --psi-text-mute: #a1a1aa;
+    --psi-accent: #2563eb;
+    --psi-accent-soft: rgba(37, 99, 235, 0.10);
+    --psi-danger: #b91c1c;
+    --psi-radius: 8px;
+    --psi-radius-sm: 6px;
+}
+
+#publicshareindex-app {
+    text-align: left;
+}
+
+#publicshareindex-app.psi-shell {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 9999;
+    display: grid;
+    grid-template-columns: 264px minmax(0, 1fr);
+    background: var(--psi-bg);
+    color: var(--psi-text);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    overflow: hidden;
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+#publicshareindex-app.psi-shell *,
+#publicshareindex-app.psi-shell *::before,
+#publicshareindex-app.psi-shell *::after {
+    box-sizing: border-box;
+}
+
+/*
+ * 防御性 reset：
+ *   Nextcloud guest 布局会对原生 <button>、<input> 注入大量默认样式（min-height、border、
+ *   background、padding 等），即使我们后续覆盖也容易出现意料外效果。
+ *   因此本应用刻意避开 <button>，统一使用 <div role="button" tabindex="0"> 或 <span role="button">；
+ *   这里再做一层显式 reset，作为最后的保险。
+ */
+#publicshareindex-app.psi-shell .psi-tree-item,
+#publicshareindex-app.psi-shell .psi-crumb,
+#publicshareindex-app.psi-shell .psi-btn,
+#publicshareindex-app.psi-shell .psi-linklike {
+    appearance: none;
+    -webkit-appearance: none;
+    text-shadow: none;
+    -webkit-tap-highlight-color: transparent;
+    text-decoration: none;
+    line-height: 1.4;
+}
+#publicshareindex-app.psi-shell [role="button"] {
+    cursor: pointer;
+}
+#publicshareindex-app.psi-shell [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+#publicshareindex-app.psi-shell .psi-noscript {
+    grid-column: 1 / -1;
+    padding: 12px 20px;
+    background: #fff7ed;
+    color: #9a3412;
+    border-bottom: 1px solid #fed7aa;
+}
+
+/* ---------------- 侧栏 ---------------- */
+
+.psi-sidebar {
+    background: var(--psi-bg-soft);
+    border-right: 1px solid var(--psi-border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.psi-brand {
+    padding: 18px 20px 12px;
+}
+.psi-brand h1 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--psi-text);
+    letter-spacing: 0.01em;
+}
+
+.psi-search-box {
+    padding: 4px 16px 12px;
+}
+.psi-search-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.psi-search-icon {
+    position: absolute;
+    left: 10px;
+    color: var(--psi-text-mute);
+    pointer-events: none;
+}
+.psi-search-box input {
+    width: 100%;
+    height: 32px;
+    border: 1px solid var(--psi-border);
+    border-radius: var(--psi-radius-sm);
+    padding: 0 10px 0 30px;
+    background: var(--psi-surface);
+    color: var(--psi-text);
+    font: inherit;
+    outline: none;
+    transition: border-color .12s ease, box-shadow .12s ease;
+    /* 抵消 NC guest 布局可能注入的 input 默认样式 */
+    appearance: none;
+    -webkit-appearance: none;
+    box-shadow: none;
+    margin: 0;
+}
+.psi-search-box input::placeholder { color: var(--psi-text-mute); }
+.psi-search-box input:focus {
+    border-color: var(--psi-accent);
+    box-shadow: 0 0 0 3px var(--psi-accent-soft);
+}
+
+.psi-sidebar-section {
+    padding: 4px 8px 8px;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+.psi-sidebar-title {
+    padding: 12px 12px 6px;
+    color: var(--psi-text-mute);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+}
+
+/*
+ * 目录树
+ *   - 不使用 <button>，避免 NC 全局 button 样式渗透；交互元素使用 <div role="button" tabindex="0">
+ *   - 不使用动态 paddingLeft 表达层级；改用子容器左侧 dashed border 形成可见分支线
+ *   - 一级（owner）字重加深、字色更深
+ *   - active 用左侧 2px accent 竖线 + 文字色变化标识
+ */
+.psi-tree { padding-left: 4px; }
+.psi-tree-node { margin: 0; position: relative; }
+
+/* 二级及以下：用左侧虚线分支线 + 缩进，凸显层级 */
+.psi-tree-children {
+    margin-left: 11px;
+    padding-left: 10px;
+    border-left: 1px dashed var(--psi-border-strong);
+}
+
+.psi-tree-item {
+    width: 100%;
+    min-height: 28px;
+    background: transparent;
+    color: var(--psi-text-soft);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px 4px 4px;
+    cursor: pointer;
+    font-size: 13px;
+    position: relative;
+    transition: color .12s ease;
+    user-select: none;
+    -webkit-user-select: none;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+/* 一级 owner 视觉权重更大，便于区分层级 */
+.psi-tree-node-root > .psi-tree-item {
+    color: var(--psi-text);
+    font-weight: 600;
+    font-size: 13.5px;
+    min-height: 30px;
+}
+
+.psi-tree-item:hover { color: var(--psi-text); }
+.psi-tree-node-root > .psi-tree-item:hover { color: var(--psi-accent); }
+
+.psi-tree-item.active {
+    color: var(--psi-accent);
+    font-weight: 600;
+}
+.psi-tree-item.active::before {
+    content: '';
+    position: absolute;
+    left: -4px;
+    top: 6px;
+    bottom: 6px;
+    width: 2px;
+    background: var(--psi-accent);
+    border-radius: 2px;
+}
+.psi-tree-node-child .psi-tree-item.active::before {
+    /* 子级条目相对 children 容器再往左 4px，正好压在 dashed 分支线上 */
+    left: -11px;
+}
+
+.psi-tree-item:focus-visible {
+    outline: 2px solid var(--psi-accent-soft);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+.psi-tree-caret {
+    width: 14px; height: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--psi-text-mute);
+    transition: transform .15s ease;
+    flex: 0 0 auto;
+}
+.psi-tree-caret.expanded { transform: rotate(90deg); }
+.psi-tree-caret-empty { width: 10px; height: 10px; display: inline-block; }
+.psi-tree-label {
+    flex: 1; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.psi-sidebar-footer {
+    padding: 12px 20px 16px;
+    border-top: 1px solid var(--psi-border);
+    color: var(--psi-text-mute);
+    font-size: 12px;
+}
+
+/* ---------------- 主区 ---------------- */
+
+.psi-main {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--psi-surface);
+}
+
+.psi-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 28px;
+    border-bottom: 1px solid var(--psi-border);
+    flex: 0 0 auto;
+}
+.psi-breadcrumbs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    min-width: 0;
+}
+.psi-crumb {
+    background: transparent;
+    color: var(--psi-text-soft);
+    font-size: 13px;
+    padding: 4px 6px;
+    border-radius: var(--psi-radius-sm);
+    transition: color .12s ease, background-color .12s ease;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.psi-crumb-clickable { cursor: pointer; }
+.psi-crumb-clickable:hover { color: var(--psi-text); background: var(--psi-hover); }
+.psi-crumb-clickable:focus-visible {
+    outline: 2px solid var(--psi-accent-soft);
+    outline-offset: 1px;
+}
+.psi-crumb-static { color: var(--psi-text); font-weight: 600; }
+.psi-crumb-sep { color: var(--psi-text-mute); padding: 0 2px; font-size: 12px; user-select: none; }
+
+.psi-topbar-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+
+.psi-btn {
+    height: 30px;
+    padding: 0 12px;
+    border-radius: var(--psi-radius-sm);
+    border: 1px solid var(--psi-border);
+    background: var(--psi-surface);
+    color: var(--psi-text);
+    font-size: 13px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: background-color .12s ease, border-color .12s ease, color .12s ease;
+    white-space: nowrap;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.psi-btn:hover { background: var(--psi-hover); border-color: var(--psi-border-strong); color: var(--psi-text); }
+.psi-btn:focus-visible {
+    outline: none;
+    border-color: var(--psi-accent);
+    box-shadow: 0 0 0 3px var(--psi-accent-soft);
+}
+.psi-btn-action { height: 28px; padding: 0 10px; font-size: 12px; }
+a.psi-btn { text-decoration: none; }
+a.psi-btn:hover { text-decoration: none; }
+
+.psi-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 16px 28px 0;
+}
+
+.psi-panel-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 8px 0 16px;
+    flex: 0 0 auto;
+}
+.psi-panel-title { min-width: 0; flex: 1; }
+.psi-panel-title h2 {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--psi-text);
+    letter-spacing: -0.01em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.psi-panel-title p {
+    margin: 6px 0 0;
+    color: var(--psi-text-soft);
+    font-size: 13px;
+    line-height: 1.55;
+    max-width: 760px;
+}
+.psi-status {
+    color: var(--psi-text-mute);
+    font-size: 12px;
+    white-space: nowrap;
+    flex: 0 0 auto;
+    margin-top: 6px;
+}
+
+.psi-table-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    border-top: 1px solid var(--psi-border);
+    margin: 0 -28px;
+    padding: 0 28px;
+}
+.psi-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.psi-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--psi-surface);
+    text-align: left;
+    font-weight: 500;
+    color: var(--psi-text-mute);
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--psi-border);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+}
+.psi-table thead th:first-child { padding-left: 4px; }
+.psi-table thead th:last-child { padding-right: 4px; }
+.psi-table tbody td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--psi-border);
+    color: var(--psi-text);
+    vertical-align: middle;
+}
+.psi-table tbody td:first-child { padding-left: 4px; }
+.psi-table tbody td:last-child { padding-right: 4px; }
+.psi-table tbody tr:hover td { background: var(--psi-bg-soft); }
+.psi-table tbody tr:last-child td { border-bottom: 0; }
+
+.psi-col-name { min-width: 280px; }
+.psi-col-meta { white-space: nowrap; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.psi-col-type, .psi-col-time { white-space: nowrap; }
+.psi-col-actions { width: 1%; white-space: nowrap; text-align: right; }
+
+.psi-cell-meta { color: var(--psi-text-soft); }
+
+.psi-linklike {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    color: var(--psi-text);
+    padding: 0;
+    font-weight: 500;
+    text-align: left;
+    max-width: 100%;
+}
+.psi-linklike > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.psi-linklike:hover { color: var(--psi-accent); }
+.psi-linklike:focus-visible {
+    outline: none;
+    color: var(--psi-accent);
+    text-decoration: underline;
+}
+/* a 标签的下划线由 hover 控制，平时不显示 */
+a.psi-linklike { text-decoration: none; }
+a.psi-linklike:hover { text-decoration: none; }
+
+.psi-row-name {
+    margin-left: 8px;
+    font-weight: 500;
+}
+
+.psi-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--psi-text-soft); flex: 0 0 auto; }
+.psi-icon-folder { color: #2563eb; }
+.psi-icon-owner  { color: #6366f1; }
+.psi-icon-image  { color: #16a34a; }
+.psi-icon-video  { color: #ea580c; }
+.psi-icon-audio  { color: #9333ea; }
+.psi-icon-pdf    { color: #dc2626; }
+.psi-icon-text   { color: #0891b2; }
+.psi-icon-file   { color: var(--psi-text-mute); }
+
+.psi-empty {
+    padding: 48px 16px !important;
+    text-align: center;
+    color: var(--psi-text-mute);
+    font-size: 13px;
+}
+.psi-empty-error { color: var(--psi-danger); }
+
+.psi-skeleton {
+    height: 14px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--psi-hover) 0%, var(--psi-bg-soft) 50%, var(--psi-hover) 100%);
+    background-size: 200% 100%;
+    animation: psi-skeleton-shimmer 1.4s linear infinite;
+}
+@keyframes psi-skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.psi-result-path {
+    margin-top: 4px;
+    color: var(--psi-text-mute);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.psi-detail-meta {
+    color: var(--psi-text-mute);
+    font-size: 12px;
+    background: var(--psi-bg-soft);
+    padding: 10px 16px !important;
+}
+
+/* ---------------- 通用 ---------------- */
+
+.psi-visually-hidden {
+    position: absolute !important;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
+    border: 0;
+}
+
+#publicshareindex-app.psi-shell ::-webkit-scrollbar { width: 10px; height: 10px; }
+#publicshareindex-app.psi-shell ::-webkit-scrollbar-track { background: transparent; }
+#publicshareindex-app.psi-shell ::-webkit-scrollbar-thumb { background: var(--psi-border-strong); border-radius: 6px; border: 2px solid transparent; background-clip: content-box; }
+#publicshareindex-app.psi-shell ::-webkit-scrollbar-thumb:hover { background: var(--psi-text-mute); border: 2px solid transparent; background-clip: content-box; }
+
+/* ---------------- 响应式 ---------------- */
+
+@media (max-width: 900px) {
+    #publicshareindex-app.psi-shell {
+        grid-template-columns: 220px minmax(0, 1fr);
+    }
+    .psi-content, .psi-topbar { padding-left: 18px; padding-right: 18px; }
+    .psi-table-wrap { margin: 0 -18px; padding: 0 18px; }
+    .psi-col-meta { display: none; }
+}
+
+@media (max-width: 720px) {
+    #publicshareindex-app.psi-shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+    }
+    .psi-sidebar {
+        max-height: 40vh;
+        border-right: 0;
+        border-bottom: 1px solid var(--psi-border);
+    }
+    .psi-content, .psi-topbar { padding-left: 14px; padding-right: 14px; }
+    .psi-table-wrap { margin: 0 -14px; padding: 0 14px; }
+    .psi-col-time, .psi-col-type { display: none; }
+    .psi-panel-header { flex-direction: column; gap: 8px; }
+}

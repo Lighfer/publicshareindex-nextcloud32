@@ -1,3 +1,9 @@
+docker exec -u www-data nextcloud php /var/www/html/occ app:disable publicshareindex
+docker exec -u root nextcloud rm -rf /var/www/html/custom_apps/publicshareindex
+docker cp publicshareindex nextcloud:/var/www/html/custom_apps/publicshareindex
+docker exec -u root nextcloud chown -R www-data:www-data /var/www/html/custom_apps/publicshareindex
+docker exec -u www-data nextcloud php /var/www/html/occ app:enable publicshareindex
+
 # 公开共享浏览器（Public Share Index）
 
 > 一个面向 NextCloud 32 的自定义应用，提供一个全屏、扁平、克制的匿名公开页面，用来**集中索引**当前实例上所有活跃的公开链接共享，并支持**全局搜索**、**「显示所有文件」开关**与**直接下载**。"预览 / 查看"统一跳回 NextCloud 原生公开分享页面；"下载"由本应用以**强制 attachment + 流式输出**直接提供，避免内联预览风险与 OOM。
